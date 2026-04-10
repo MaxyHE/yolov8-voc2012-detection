@@ -33,6 +33,11 @@
 
 ## 🎬 Demo 效果
 
+### Streamlit Demo 界面
+
+![streamlit demo 1](assets/streamlit_pic_1.png)
+![streamlit demo 2](assets/streamlit_pic_2.png)
+
 ### 图片检测
 
 ![detection demo](assets/demo.png)

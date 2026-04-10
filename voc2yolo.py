@@ -13,8 +13,8 @@ def convert_box(size, box):
     h = (box[3]-box[2]) * dh
     return x, y, w, h
 
-anno_path = '/home/hejiening/2026/yolo/VOCdevkit/VOC2012/Annotations'
-label_path = '/home/hejiening/2026/yolo/VOCdevkit/VOC2012/labels'
+anno_path = 'VOCdevkit/VOC2012/Annotations'
+label_path = 'VOCdevkit/VOC2012/labels'
 os.makedirs(label_path, exist_ok=True)
 
 for xml_file in os.listdir(anno_path):

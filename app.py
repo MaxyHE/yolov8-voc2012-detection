@@ -82,7 +82,7 @@ with st.sidebar:
 
     model_path = st.text_input(
         "模型路径" if zh else "Model Path",
-        value=r"D:\claudeprj\PersonalCareer\yolo\best.pt"
+        value=r"best.pt"
     )
     conf_threshold = st.slider(
         "置信度阈值" if zh else "Confidence Threshold",
