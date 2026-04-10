@@ -20,7 +20,10 @@ __pycache__/
 output_record.txt
 error_record.txt
 *.ipynb
+onxx.py
+main
 
 # 系统
 .DS_Store
 Thumbs.db
+train13/ 
