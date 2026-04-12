@@ -7,7 +7,7 @@
 ![YOLOv8](https://img.shields.io/badge/YOLOv8s-Ultralytics-purple)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-基于 YOLOv8s 在 PASCAL VOC2012 数据集上训练的目标检测与多目标追踪系统，提供 Streamlit 交互式 Demo，支持图片检测与视频实时追踪。
+基于 YOLOv8s 在 PASCAL VOC2012 数据集上训练的目标检测与多目标追踪系统，集成 InternVL2-1B 视觉大模型实现跨模态语义描述，提供 Streamlit 交互式 Demo，支持图片检测与视频实时追踪。
 
 </div>
 
@@ -16,6 +16,7 @@
 ## ✨ 功能特性
 
 - 🖼️ **图片目标检测**：上传图片，自动识别 20 类物体的位置、类别与置信度
+- 🤖 **AI 智能描述**：集成 InternVL2-1B 视觉语言大模型，通过 ROI 局部裁剪引导输入，对每个检测目标生成自然语言描述，构建检测-语义双层架构
 - 🎬 **视频多目标追踪**：基于 ByteTrack 算法，对视频逐帧检测并分配唯一追踪 ID
 - 🌐 **中英文界面切换**：侧边栏一键切换语言
 - 📦 **ONNX 导出支持**：可导出为 ONNX 格式，脱离 PyTorch 环境部署推理
@@ -31,22 +32,33 @@
 
 ---
 
-## 🎬 Demo 效果
-
-### Streamlit Demo 界面
-
-![streamlit demo 1](assets/streamlit_pic_1.png)
-![streamlit demo 2](assets/streamlit_pic_2.png)
+## 🎬 效果展示
 
 ### 图片检测
 
 ![detection demo](assets/demo.png)
+
+### 🤖 检测-语义双层架构案例分析
+
+通过局部裁剪将 YOLO 提取的 ROI 引导输入 InternVL，相比全图输入有效减少语义稀释，同时采用 float16 半精度推理降低显存占用。
+
+**案例：两只狗的复杂遮挡场景**
+
+| YOLO 检测结果 | InternVL 语义描述 |
+|---|---|
+| ![yolo result](assets/case_TwoDogs_yolo.png) | ![vlm result](assets/case_TwoDogsVLM.png) |
+
+YOLOv8 成功检测出两只狗的边界框；InternVL 对局部裁剪区域分别生成描述，第二个目标的描述（"一只白色和一只黑色的狗"）体现了 VLM 的全局语义理解能力，有效补充了判别式模型的类别信息。
 
 ### 视频多目标追踪（ByteTrack）
 
 > 📹 [原始视频](assets/original_video.mp4) ｜ [追踪结果](assets/tracked_video.mp4)
 
 使用 ByteTrack 算法对视频逐帧检测，为每个目标分配唯一 ID 并持续追踪。
+
+### Streamlit Demo 界面
+
+![UI展示](assets/UI展示.png)
 
 ---
 
@@ -85,8 +97,9 @@
 
 ## 🛠️ 技术栈
 
-- **模型**：Ultralytics YOLOv8s（anchor-free，FPN多尺度检测头）
-- **追踪**：ByteTrack 多目标追踪算法
+- **检测模型**：Ultralytics YOLOv8s（anchor-free，FPN 多尺度检测头）
+- **语言模型**：InternVL2-1B（视觉语言大模型，float16 半精度推理）
+- **追踪算法**：ByteTrack 多目标追踪
 - **框架**：Python 3.8 / PyTorch 2.0
 - **Demo**：Streamlit（支持中英文切换）
 - **数据集**：PASCAL VOC2012（20类，5717张训练图 / 5823张验证图）
@@ -99,7 +112,7 @@
 ### 1. 安装依赖
 
 ```bash
-pip install ultralytics streamlit
+pip install ultralytics streamlit transformers accelerate einops timm
 ```
 
 ### 2. 数据准备
@@ -122,7 +135,7 @@ python train.py
 streamlit run app.py
 ```
 
-在侧边栏填入模型路径，上传图片或视频即可。
+在侧边栏填入模型路径，上传图片或视频即可。开启"AI智能描述"开关后，每个检测目标将自动生成自然语言描述（需要 InternVL 模型路径）。
 
 ### 5. 导出 ONNX
 
@@ -137,13 +150,16 @@ model.export(format='onnx')
 ## 📁 项目结构
 
 ```
-├── app.py              # Streamlit Demo（图片检测 + 视频追踪）
+├── app.py              # Streamlit Demo（图片检测 + 视频追踪 + AI描述）
 ├── train.py            # 训练脚本
 ├── voc2yolo.py         # VOC XML 转 YOLO txt 格式
 ├── VOC2012.yaml        # 数据集配置
 ├── .gitignore
 └── assets/
-    ├── demo.png                        # 图片检测截图
+    ├── UI展示.png                      # Demo 界面截图
+    ├── demo.png                        # 图片检测效果
+    ├── case_TwoDogs_yolo.jpg           # 案例：YOLO检测结果
+    ├── case_TwoDogs_VLM.jpg            # 案例：InternVL描述结果
     ├── original_video.mp4              # 原始演示视频
     ├── tracked_video.mp4               # 追踪结果视频
     ├── results.png                     # 训练曲线

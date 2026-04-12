@@ -5,6 +5,7 @@ import numpy as np
 import cv2
 import tempfile
 import os
+import torch
 from collections import Counter
 
 # 页面配置
@@ -60,16 +61,13 @@ st.markdown("""
         margin: 6px 0;
         background: rgba(102,126,234,0.06);
     }
-    .lang-tag {
-        display: inline-block;
-        padding: 2px 10px;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        background: linear-gradient(90deg, #667eea, #764ba2);
-        color: white;
-        margin-left: 8px;
-        vertical-align: middle;
+    .desc-card {
+        border-left: 4px solid #764ba2;
+        border-radius: 8px;
+        padding: 10px 16px;
+        margin: 6px 0;
+        background: rgba(118,75,162,0.06);
+        font-style: italic;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -82,7 +80,7 @@ with st.sidebar:
 
     model_path = st.text_input(
         "模型路径" if zh else "Model Path",
-        value=r"best.pt"
+        value="best.pt"
     )
     conf_threshold = st.slider(
         "置信度阈值" if zh else "Confidence Threshold",
@@ -95,8 +93,20 @@ with st.sidebar:
         ["🖼️ " + ("图片检测" if zh else "Image Detection"),
          "🎬 " + ("视频追踪" if zh else "Video Tracking")]
     )
-    st.divider()
 
+    # AI描述开关（仅图片模式）
+    if "图片" in mode or "Image" in mode:
+        st.divider()
+        enable_caption = st.toggle(
+            "🤖 " + ("AI智能描述（InternVL）" if zh else "AI Caption (InternVL)"),
+            value=False,
+            help="开启后对每个检测目标生成自然语言描述，速度较慢" if zh else
+                 "Generate natural language description for each detected object. Slower."
+        )
+    else:
+        enable_caption = False
+
+    st.divider()
     st.markdown("**" + ("支持类别（20类）" if zh else "Supported Classes (20)") + "**")
     st.caption("VOC2012 标准类别，涵盖人、车辆、动物、家具等常见物体" if zh else
                "VOC2012 standard classes: people, vehicles, animals, furniture and more.")
@@ -124,24 +134,50 @@ with st.sidebar:
 # 标题区
 st.markdown('🎯 <span class="gradient-title">YOLOv8 ' + ("目标检测 & 追踪" if zh else "Detection & Tracking") + '</span>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">' + (
-    "基于 YOLOv8s 在 VOC2012 数据集训练，支持图片检测与视频多目标追踪"
+    "基于 YOLOv8s 在 VOC2012 数据集训练，支持图片检测与视频多目标追踪，集成 InternVL 多模态描述"
     if zh else
-    "Trained on VOC2012 with YOLOv8s · Supports image detection & multi-object tracking"
+    "Trained on VOC2012 with YOLOv8s · Image detection, video tracking & InternVL multimodal captioning"
 ) + '</div>', unsafe_allow_html=True)
 st.divider()
 
 @st.cache_resource
-def load_model(path):
+def load_yolo(path):
     return YOLO(path)
 
-model = load_model(model_path)
+@st.cache_resource
+def load_internvl():
+    from transformers import AutoTokenizer, AutoModel
+    import torchvision.transforms as T
+    from torchvision.transforms.functional import InterpolationMode
+    model_path = 'path/to/internvl'  # 替换为 InternVL 模型本地路径
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    vl_model = AutoModel.from_pretrained(model_path, torch_dtype=torch.float16, trust_remote_code=True).cuda().eval()
+    return tokenizer, vl_model
+
+def get_internvl_description(crop_img, tokenizer, vl_model, zh=True):
+    import torchvision.transforms as T
+    from torchvision.transforms.functional import InterpolationMode
+    IMAGENET_MEAN = (0.485, 0.456, 0.406)
+    IMAGENET_STD = (0.229, 0.224, 0.225)
+    transform = T.Compose([
+        T.Resize((448, 448), interpolation=InterpolationMode.BICUBIC),
+        T.ToTensor(),
+        T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+    ])
+    pixel_values = transform(crop_img).unsqueeze(0).to(torch.float16).cuda()
+    question = '<image>\n用一句中文简短描述这个目标' if zh else '<image>\nDescribe this object briefly in one sentence.'
+    generation_config = dict(max_new_tokens=128, do_sample=False)
+    response = vl_model.chat(tokenizer, pixel_values, question, generation_config)
+    return response
+
+yolo_model = load_yolo(model_path)
 
 # 图片检测
 if "图片" in mode or "Image" in mode:
     st.info("💡 " + (
-        "上传图片后，系统将自动识别图中的目标类别、位置和置信度。支持 VOC2012 的 20 类常见物体。"
+        "上传图片后，系统将自动识别图中的目标类别、位置和置信度。开启 AI 描述可获取每个目标的自然语言说明。"
         if zh else
-        "Upload an image and the system will detect object categories, locations, and confidence scores."
+        "Upload an image to detect objects. Enable AI Caption for natural language descriptions of each target."
     ))
     uploaded_file = st.file_uploader(
         "上传图片" if zh else "Upload Image",
@@ -154,7 +190,7 @@ if "图片" in mode or "Image" in mode:
         img_array = np.array(image)
 
         with st.spinner("检测中..." if zh else "Detecting..."):
-            results = model(img_array, conf=conf_threshold)
+            results = yolo_model(img_array, conf=conf_threshold)
             result_img = results[0].plot()
             result_img_rgb = cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)
 
@@ -170,7 +206,7 @@ if "图片" in mode or "Image" in mode:
 
         boxes = results[0].boxes
         if len(boxes) > 0:
-            cls_counts = Counter([model.names[int(b.cls)] for b in boxes])
+            cls_counts = Counter([yolo_model.names[int(b.cls)] for b in boxes])
             cols = st.columns(min(len(cls_counts), 4))
             for i, (cls_name, count) in enumerate(cls_counts.items()):
                 with cols[i % 4]:
@@ -183,14 +219,33 @@ if "图片" in mode or "Image" in mode:
 
             st.markdown("")
             st.markdown("**" + ("详细结果" if zh else "Details") + "**")
+
+            # 加载InternVL
+            if enable_caption:
+                with st.spinner("加载 InternVL 模型..." if zh else "Loading InternVL..."):
+                    tokenizer, vl_model = load_internvl()
+
+            img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
             for box in sorted(boxes, key=lambda b: float(b.conf), reverse=True):
-                cls_name = model.names[int(box.cls)]
+                cls_name = yolo_model.names[int(box.cls)]
                 conf = float(box.conf)
                 bar = "█" * int(conf * 10) + "░" * (10 - int(conf * 10))
+
+                desc_html = ""
+                if enable_caption:
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    crop_bgr = img_bgr[y1:y2, x1:x2]
+                    if crop_bgr.size > 0:
+                        crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+                        crop_pil = Image.fromarray(crop_rgb)
+                        desc = get_internvl_description(crop_pil, tokenizer, vl_model, zh)
+                        desc_html = f'<div class="desc-card">🤖 {desc}</div>'
+
                 st.markdown(f"""
                     <div class="result-card">
                         <b>{cls_name}</b> &nbsp; {bar} &nbsp; {conf:.1%}
                     </div>
+                    {desc_html}
                 """, unsafe_allow_html=True)
         else:
             st.info("未检测到物体，尝试降低置信度阈值" if zh else "No objects detected. Try lowering the confidence threshold.")
@@ -239,7 +294,7 @@ elif "视频" in mode or "Video" in mode:
                 ret, frame = cap.read()
                 if not ret:
                     break
-                results = model.track(frame, conf=conf_threshold, tracker="bytetrack.yaml", persist=True, verbose=False)
+                results = yolo_model.track(frame, conf=conf_threshold, tracker="bytetrack.yaml", persist=True, verbose=False)
                 annotated = results[0].plot()
                 out.write(annotated)
                 frame_idx += 1
