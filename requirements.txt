@@ -1,0 +1,12 @@
+torch==2.4.0
+torchvision
+ultralytics
+transformers==5.5.4
+accelerate
+einops
+timm
+streamlit
+Pillow
+numpy
+opencv-python
+matplotlib
