@@ -3,6 +3,7 @@ torchvision
 ultralytics
 transformers==5.5.4
 accelerate
+peft
 einops
 timm
 streamlit
