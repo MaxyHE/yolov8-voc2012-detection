@@ -1,0 +1,7 @@
+{
+  "total_samples": 187,
+  "ambiguous_excluded": 75,
+  "yolo_acc": 72.19,
+  "zeroshot_acc": 78.61,
+  "lora_acc": 89.84
+}
